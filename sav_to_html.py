@@ -34,6 +34,7 @@ except ModuleNotFoundError:
 DEFAULT_OUTPUT_DIR = "."
 DEFAULT_HTML_BASENAME = "save.html"
 FONT_FILENAME = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf" # The library automatically adjusts to "C:\Windows\Fonts\DejaVuSerif.ttf" on Windows.
+SORT_DIMENSIONAL_DEPOT_FLAG = False
 
 MAP_DESCALE = 20
 MAP_BASENAME_BLANK = f"blank_map{str(MAP_DESCALE).zfill(2)}.png"
@@ -494,7 +495,8 @@ def generateHTML(savFilename: str, outputDir: str = DEFAULT_OUTPUT_DIR, htmlBase
       if len(dimensionalDepotContents) > 0:
          lines += "Dimensional Depot Contains:\n"
          lines += '<ul style="margin-top:0px">\n'
-         dimensionalDepotContents.sort(key=lambda x: x[1])
+         if SORT_DIMENSIONAL_DEPOT_FLAG:
+            dimensionalDepotContents.sort(key=lambda x: x[1])
          for (itemCount, itemName) in dimensionalDepotContents:
             stackSize = getStackSize(itemName, itemCount)
             if stackSize is None:
