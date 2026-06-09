@@ -31,7 +31,7 @@ def parseBlueprint(sbpFile: str):
       if headerVersion != 2:
          return f"Unsupported header version {headerVersion}"
       (offset, saveVersion) = sav_parse.parseUint32(offset, data)
-      if saveVersion != 51 and saveVersion != 52 and saveVersion != 53 and saveVersion != 58:
+      if saveVersion != 51 and saveVersion != 52 and saveVersion != 53 and saveVersion != 58 and saveVersion != 60:
          return f"Unsupported save version {saveVersion}"
       (offset, buildVersion) = sav_parse.parseUint32(offset, data)
       (offset, designerDimensionX) = sav_parse.parseUint32(offset, data)
