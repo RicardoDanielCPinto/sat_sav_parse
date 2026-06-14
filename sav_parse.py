@@ -663,8 +663,8 @@ class Object: # Both ActorObject and ComponentObject
                   for kdx in range(3):
                      three = []
                      for ldx in range(3):
-                        (offset, uint3) = parseUint64(offset, data)
-                        three.append(uint3)
+                        (offset, value) = parseDouble(offset, data)
+                        three.append(value)
                      nine.append(three)
                   chainBeltElements.append(nine)
 
