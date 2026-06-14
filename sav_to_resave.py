@@ -766,7 +766,7 @@ def addObject(headerSaveVersion, objectUE5Version, object, actorOrComponentObjec
             for element in chainBeltElements:
                for kdx in range(3):
                   for ldx in range(3):
-                     dataTrailing.extend(addUint64(element[kdx][ldx]))
+                     dataTrailing.extend(addDouble(element[kdx][ldx]))
             dataTrailing.extend(addUint32(buint32a))
             dataTrailing.extend(addUint32(buint32b))
             dataTrailing.extend(addUint32(buint32c))
