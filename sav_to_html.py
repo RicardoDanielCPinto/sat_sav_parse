@@ -46,6 +46,7 @@ MAP_BASENAME_SOME_MERC_HD   = "save_top_collectables.png"
 MAP_BASENAME_COLLECTABLES   = "save_all_collectables.png"
 MAP_BASENAME_POWER          = "save_power.png"
 MAP_BASENAME_RESOURCE_NODES = "save_nodes.png"
+MAP_BASENAME_POWER_COLLECTABLES = "save_power_collectables.png"
 
 MAP_RESOURCE_NODE_CIRCLE_SIZE_UNUSED = 3
 MAP_RESOURCE_NODE_CIRCLE_SIZE_USED = 2
@@ -88,6 +89,7 @@ MAP_FONT_SIZE = 760/MAP_DESCALE
 MAP_TEXT_POSITION = (4400/MAP_DESCALE, 4300/MAP_DESCALE)
 MAP_LEGEND_POSITION_HD = (26800/MAP_DESCALE, 32000/MAP_DESCALE)
 MAP_LEGEND_POSITION_SMC = (23000/MAP_DESCALE, 32700/MAP_DESCALE)
+MAP_LEGEND_POSITION_PC = (29000/MAP_DESCALE, 30500/MAP_DESCALE)
 CROP_SETTINGS = (4096/MAP_DESCALE, 4096/MAP_DESCALE, 36864/MAP_DESCALE, 36864/MAP_DESCALE)
 def adjPos(pos, yFlag):
    newPos = (pos / 22.887 + (18282.5,20480)[yFlag]) / MAP_DESCALE
@@ -434,7 +436,7 @@ def generateHTML(savFilename: str, outputDir: str = DEFAULT_OUTPUT_DIR, htmlBase
 
       lines += f'Mining {numMinedResources} of {len(minedResourceActors)} resources'
       if creatingMapImagesFlag:
-         lines += f' (<a href="{MAP_BASENAME_RESOURCE_NODES}">map</a>).\n<a href="{MAP_BASENAME_POWER}">Map of Power Lines.</a><p>\n'
+         lines += f' (<a href="{MAP_BASENAME_RESOURCE_NODES}">map</a>).\n<a href="{MAP_BASENAME_POWER}">Map of Power Lines.</a> <a href="{MAP_BASENAME_POWER_COLLECTABLES}">Map of Power Lines + Collectables.</a><p>\n'
       else:
          lines += ".<p>\n"
 
@@ -665,6 +667,39 @@ def generateHTML(savFilename: str, outputDir: str = DEFAULT_OUTPUT_DIR, htmlBase
          plDraw.text(MAP_TEXT_POSITION, parsedSave.saveFileInfo.saveDatetime.strftime(f"Power Lines\n{parsedSave.saveFileInfo.sessionName} %m/%d/%Y %I:%M:%S %p"), font=imageFont, fill=MAP_COLOR_TEXT)
          imageFilename = f"{outputDir}/{MAP_BASENAME_POWER}"
          plImage.crop(CROP_SETTINGS).save(imageFilename)
+         chown(imageFilename)
+
+         pcImage = origImage.copy()
+         pcDraw = ImageDraw.Draw(pcImage)
+         for (src, dst) in wireLines:
+            possX = adjPos(src[0], False)
+            posdX = adjPos(dst[0], False)
+            possY = adjPos(src[1], True)
+            posdY = adjPos(dst[1], True)
+            pcDraw.line(((possX, possY), (posdX, posdY)), fill=MAP_COLOR_POWER_LINE, width=2)
+         addSlugs(pcDraw, uncollectedPowerSlugsBlue, MAP_COLOR_SLUG_BLUE)
+         addSlugs(pcDraw, uncollectedPowerSlugsYellow, MAP_COLOR_SLUG_YELLOW)
+         addSlugs(pcDraw, uncollectedPowerSlugsPurple, MAP_COLOR_SLUG_PURPLE)
+         for instanceName in uncollectedSomersloops:
+            (rootObject, rotation, position, details) = uncollectedSomersloops[instanceName]
+            posX = adjPos(position[0], False)
+            posY = adjPos(position[1], True)
+            pcDraw.ellipse((posX-2, posY-2, posX+2, posY+2), fill=MAP_COLOR_UNCOLLECTED_SOMERSLOOP)
+         for instanceName in uncollectedMercerSpheres:
+            (rootObject, rotation, position, details) = uncollectedMercerSpheres[instanceName]
+            posX = adjPos(position[0], False)
+            posY = adjPos(position[1], True)
+            pcDraw.ellipse((posX-2, posY-2, posX+2, posY+2), fill=MAP_COLOR_UNCOLLECTED_MERCER_SPHERE)
+         pcDraw.text(MAP_TEXT_POSITION, parsedSave.saveFileInfo.saveDatetime.strftime(f"Power Lines & Collectables\n{parsedSave.saveFileInfo.sessionName} %m/%d/%Y %I:%M:%S %p"), font=imageFont, fill=MAP_COLOR_TEXT)
+         pcDraw.text(MAP_LEGEND_POSITION_PC, "Power Lines\nBlue Slugs\nYellow Slugs\nPurple Slugs\nSomersloops\nMercer Spheres", font=imageFont, fill=(255,255,255))
+         pcDraw.text(MAP_LEGEND_POSITION_PC, "Power Lines", font=imageFont, fill=MAP_COLOR_POWER_LINE)
+         pcDraw.text(MAP_LEGEND_POSITION_PC, "\nBlue Slugs", font=imageFont, fill=MAP_COLOR_SLUG_BLUE)
+         pcDraw.text(MAP_LEGEND_POSITION_PC, "\n\nYellow Slugs", font=imageFont, fill=MAP_COLOR_SLUG_YELLOW)
+         pcDraw.text(MAP_LEGEND_POSITION_PC, "\n\n\nPurple Slugs", font=imageFont, fill=MAP_COLOR_SLUG_PURPLE)
+         pcDraw.text(MAP_LEGEND_POSITION_PC, "\n\n\n\nSomersloops", font=imageFont, fill=MAP_COLOR_UNCOLLECTED_SOMERSLOOP)
+         pcDraw.text(MAP_LEGEND_POSITION_PC, "\n\n\n\n\nMercer Spheres", font=imageFont, fill=MAP_COLOR_UNCOLLECTED_MERCER_SPHERE)
+         imageFilename = f"{outputDir}/{MAP_BASENAME_POWER_COLLECTABLES}"
+         pcImage.crop(CROP_SETTINGS).save(imageFilename)
          chown(imageFilename)
 
          rnImage = origImage.copy()
