@@ -1,4 +1,4 @@
-*
+
 # Ignore any local sav/json files
 /*.json
 /*.sav
