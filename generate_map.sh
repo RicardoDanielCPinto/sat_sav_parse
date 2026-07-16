@@ -15,6 +15,15 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SAV_PARSE_DIR="$(pwd)/sat_sav_parse"
+VENV_PATH="${SAV_PARSE_DIR}/.venv"
+
+# Ensure the venv exists
+if [[ ! -f "$VENV_PATH"/bin/activate ]]; then
+    echo "ERROR: Save file not found: $SAV_FILE" >&2
+    exit 1
+fi
+
+source "$VENV_PATH"/bin/activate
 
 # Validate arguments
 if [[ $# -ne 2 ]]; then

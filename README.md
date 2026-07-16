@@ -1,3 +1,13 @@
+# Setup
+
+```bash
+sudo apt install python3.12-venv
+python3.12 -m venv .venv
+
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
 # Satisfactory Save Parser
 
 Copyright (c) 2024-2026 [GreyHak](https://github.com/GreyHak)
