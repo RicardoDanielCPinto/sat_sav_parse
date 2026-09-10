@@ -34,7 +34,7 @@ except ModuleNotFoundError:
 DEFAULT_OUTPUT_DIR = "."
 DEFAULT_HTML_BASENAME = "save.html"
 FONT_FILENAME = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf" # The library automatically adjusts to "C:\Windows\Fonts\DejaVuSerif.ttf" on Windows.
-SORT_DIMENSIONAL_DEPOT_FLAG = False
+SORT_DIMENSIONAL_DEPOT_FLAG = True
 
 MAP_DESCALE = 20
 MAP_BASENAME_BLANK = f"blank_map{str(MAP_DESCALE).zfill(2)}.png"
@@ -229,6 +229,7 @@ def generateHTML(savFilename: str, outputDir: str = DEFAULT_OUTPUT_DIR, htmlBase
       unlockCount_hubTiers = 0
       unlockCount_special = 0
       dimensionalDepotContents = []
+      itemsCurrentlyUploading = set()
       powerLines = {}
       wireLines = []
       for level in parsedSave.levels:
@@ -343,6 +344,14 @@ def generateHTML(savFilename: str, outputDir: str = DEFAULT_OUTPUT_DIR, htmlBase
                         if amount is not None:
                            itemName = sav_parse.pathNameToReadableName(itemClass.pathName)
                            dimensionalDepotContents.append((amount, itemName))
+            elif "Build_CentralStorage_C" in object.instanceName and object.instanceName.endswith(".StorageInventory"):
+               inventoryStacks = sav_parse.getPropertyValue(object.properties, "mInventoryStacks")
+               if inventoryStacks is not None:
+                  slotProperties = inventoryStacks[0][0]
+                  item = sav_parse.getPropertyValue(slotProperties, "Item")
+                  numItems = sav_parse.getPropertyValue(slotProperties, "NumItems")
+                  if item is not None and len(item) == 2 and isinstance(item[0], str) and numItems:
+                     itemsCurrentlyUploading.add(sav_parse.pathNameToReadableName(item[0]))
             elif object.instanceName in powerLines:
                wireInstances = sav_parse.getPropertyValue(object.properties, "mWireInstances")
                if wireInstances is not None:
@@ -494,17 +503,23 @@ def generateHTML(savFilename: str, outputDir: str = DEFAULT_OUTPUT_DIR, htmlBase
          lines += pointProgressLines
          lines += "</ul>\n"
 
+      existingDepotItemNames = {itemName for (_, itemName) in dimensionalDepotContents}
+      for itemName in itemsCurrentlyUploading:
+         if itemName not in existingDepotItemNames:
+            dimensionalDepotContents.append((0, itemName))
+
       if len(dimensionalDepotContents) > 0:
          lines += "Dimensional Depot Contains:\n"
          lines += '<ul style="margin-top:0px">\n'
          if SORT_DIMENSIONAL_DEPOT_FLAG:
-            dimensionalDepotContents.sort(key=lambda x: x[1])
+            dimensionalDepotContents.sort(key=lambda x: (x[1] not in itemsCurrentlyUploading, x[1]))
          for (itemCount, itemName) in dimensionalDepotContents:
+            uploadingNote = ' <span style="color:purple">(uploading)</span>' if itemName in itemsCurrentlyUploading else ""
             stackSize = getStackSize(itemName, itemCount)
             if stackSize is None:
-               lines += f"<li>{itemCount} x {itemName}</li>\n"
+               lines += f"<li>{itemCount} x {itemName}{uploadingNote}</li>\n"
             else:
-               lines += f"<li>{itemCount} x {itemName} ({round(itemCount/(stackSize*CURRENT_DEPOT_STACK_LIMIT)*100,1)}%)</li>\n"
+               lines += f"<li>{itemCount} x {itemName} ({round(itemCount/(stackSize*CURRENT_DEPOT_STACK_LIMIT)*100,1)}%){uploadingNote}</li>\n"
          lines += "</ul>\n"
 
       if len(buildablesMap) > 0:
