@@ -1311,23 +1311,22 @@ if __name__ == '__main__':
             if pilAvailableFlag:
                MAP_BASENAME_FREE_ITEM = "save_free.png"
                if os.path.isfile(sav_to_html.MAP_BASENAME_BLANK):
-                  imageFont = ImageFont.truetype(sav_to_html.FONT_FILENAME, sav_to_html.MAP_FONT_SIZE)
-                  smallFont = ImageFont.truetype(sav_to_html.FONT_FILENAME, 400/sav_to_html.MAP_DESCALE)
-                  diImage = Image.open(sav_to_html.MAP_BASENAME_BLANK)
+                  diImage = sav_to_html.openBlankMap()
+                  imageFont = sav_to_html.loadMapFont()
+                  smallFont = sav_to_html.loadMapFont(sav_to_html.MAP_FONT_SIZE_SMALL)
+                  textPosition = sav_to_html.mapPoint(sav_to_html.MAP_TEXT_POSITION)
                   diDraw = ImageDraw.Draw(diImage)
                   for instanceName in droppedInstances:
                      (quantity, position) = droppedInstances[instanceName]
                      posX = sav_to_html.adjPos(position[0], False)
                      posY = sav_to_html.adjPos(position[1], True)
-                     diDraw.ellipse((posX-2, posY-2, posX+2, posY+2), fill=(255,255,0))
+                     sav_to_html.addMarker(diDraw, posX, posY, fill=(255,255,0))
                      diDraw.text((posX, posY), str(quantity), font=smallFont, fill=(0,0,0))
                   if len(sys.argv) == 4:
-                     diDraw.text(sav_to_html.MAP_TEXT_POSITION, parsedSave.saveFileInfo.saveDatetime.strftime(f"{total} free {itemName}\n{parsedSave.saveFileInfo.sessionName} %m/%d/%Y %I:%M:%S %p"), font=imageFont, fill=(0,0,0))
+                     diDraw.text(textPosition, parsedSave.saveFileInfo.saveDatetime.strftime(f"{total} free {itemName}\n{parsedSave.saveFileInfo.sessionName} %m/%d/%Y %I:%M:%S %p"), font=imageFont, fill=(0,0,0))
                   else:
-                     diDraw.text(sav_to_html.MAP_TEXT_POSITION, f"All {total} free {itemName}", font=imageFont, fill=(0,0,0))
-                  imageFilename = MAP_BASENAME_FREE_ITEM
-                  diImage.crop(sav_to_html.CROP_SETTINGS).save(imageFilename)
-                  sav_to_html.chown(imageFilename)
+                     diDraw.text(textPosition, f"All {total} free {itemName}", font=imageFont, fill=(0,0,0))
+                  sav_to_html.saveMap(diImage, MAP_BASENAME_FREE_ITEM)
 
    elif len(sys.argv) == 3 and sys.argv[1] == "--list-players" and os.path.isfile(sys.argv[2]):
       savFilename = sys.argv[2]

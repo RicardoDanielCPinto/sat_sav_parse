@@ -36,8 +36,7 @@ DEFAULT_HTML_BASENAME = "save.html"
 FONT_FILENAME = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf" # The library automatically adjusts to "C:\Windows\Fonts\DejaVuSerif.ttf" on Windows.
 SORT_DIMENSIONAL_DEPOT_FLAG = True
 
-MAP_DESCALE = 20
-MAP_BASENAME_BLANK = f"blank_map{str(MAP_DESCALE).zfill(2)}.png"
+MAP_BASENAME_BLANK = "blank_map20.png"
 MAP_BASENAME_SLUGS          = "save_slug.png"
 MAP_BASENAME_HARD_DRIVES    = "save_hd.png"
 MAP_BASENAME_SOMERSLOOP     = "save_somersloop.png"
@@ -48,8 +47,11 @@ MAP_BASENAME_POWER          = "save_power.png"
 MAP_BASENAME_RESOURCE_NODES = "save_nodes.png"
 MAP_BASENAME_POWER_COLLECTABLES = "save_power_collectables.png"
 
-MAP_RESOURCE_NODE_CIRCLE_SIZE_UNUSED = 3
-MAP_RESOURCE_NODE_CIRCLE_SIZE_USED = 2
+MAP_RESOURCE_NODE_CIRCLE_SIZE_UNUSED = 60
+MAP_RESOURCE_NODE_CIRCLE_SIZE_USED = 40
+MAP_RESOURCE_NODE_RING_WIDTH = 20
+MAP_MARKER_RADIUS = 40
+MAP_POWER_LINE_WIDTH = 40
 MAP_COLOR_TEXT = (0,0,0)
 MAP_COLOR_SLUG_BLUE = (0,0,255)
 MAP_COLOR_SLUG_YELLOW = (255,255,0)
@@ -60,7 +62,7 @@ MAP_COLOR_CRASH_SITE_OPEN_EMPTY = (255,255,255)
 MAP_COLOR_CRASH_SITE_DISMANTLED = (0,255,255)
 MAP_COLOR_UNCOLLECTED_SOMERSLOOP = (244,56,69)
 MAP_COLOR_UNCOLLECTED_MERCER_SPHERE = (78,16,113)
-MAP_COLOR_POWER_LINE = (22,47,101)
+MAP_COLOR_POWER_LINE = (255,255,0)#(22,47,101)
 MAP_COLOR_NODE_PURITY = {
    sav_data.resourcePurity.Purity.IMPURE: (210,52,48),
    sav_data.resourcePurity.Purity.NORMAL: (242,100,24),
@@ -85,22 +87,88 @@ MAP_COLOR_NODE_TYPE = {
    "Desc_Water_C": (165,204,223),
 }
 
-MAP_FONT_SIZE = 760/MAP_DESCALE
-MAP_TEXT_POSITION = (4400/MAP_DESCALE, 4300/MAP_DESCALE)
-MAP_LEGEND_POSITION_HD = (26800/MAP_DESCALE, 32000/MAP_DESCALE)
-MAP_LEGEND_POSITION_SMC = (23000/MAP_DESCALE, 32700/MAP_DESCALE)
-MAP_LEGEND_POSITION_PC = (29000/MAP_DESCALE, 30500/MAP_DESCALE)
-CROP_SETTINGS = (4096/MAP_DESCALE, 4096/MAP_DESCALE, 36864/MAP_DESCALE, 36864/MAP_DESCALE)
+# Map geometry is expressed in resolution-independent "map units": the whole
+# square the game renders spans MAP_UNITS_FULL on each axis, of which only
+# MAP_UNITS_TERRAIN is actual terrain -- the rest is blank border.
+#
+# MAP_UNITS_BLANK_IMAGE says which of those two areas blank_map20.png covers.
+# The upstream blank map includes the border, so it covers the full square and
+# the border is cropped off the generated images.  A blank map already trimmed
+# to the terrain covers MAP_UNITS_TERRAIN instead and needs no crop.  Pixel
+# sizes are derived from the image itself, so either one works at any
+# resolution.
+MAP_UNITS_FULL = 40960
+MAP_UNITS_TERRAIN = (4096, 4096, 36864, 36864)
+MAP_UNITS_BLANK_IMAGE = MAP_UNITS_TERRAIN
+
+MAP_FONT_SIZE = 760
+MAP_FONT_SIZE_SMALL = 400
+MAP_TEXT_POSITION = (4400, 4300)
+MAP_LEGEND_POSITION_HD = (26800, 32000)
+MAP_LEGEND_POSITION_SMC = (23000, 32700)
+MAP_LEGEND_POSITION_PC = (29000, 30500)
+
+mapScale = (1.0, 1.0)   # Image pixels per map unit, (x, y)
+mapOrigin = (0.0, 0.0)  # Pixel holding map unit 0, (x, y)
+cropSettings = None     # Crop box in pixels, or None when the image is all terrain
+
+def initMapGeometry(imageSize):
+   global mapScale, mapOrigin, cropSettings
+   (imageWidth, imageHeight) = imageSize
+   (imageLeft, imageTop, imageRight, imageBottom) = MAP_UNITS_BLANK_IMAGE
+   mapScale = (imageWidth / (imageRight - imageLeft), imageHeight / (imageBottom - imageTop))
+   mapOrigin = (-imageLeft * mapScale[0], -imageTop * mapScale[1])
+
+   (left, top, right, bottom) = MAP_UNITS_TERRAIN
+   cropSettings = (round(mapX(left)), round(mapY(top)), round(mapX(right)), round(mapY(bottom)))
+   if cropSettings == (0, 0, imageWidth, imageHeight):
+      cropSettings = None
+
+def mapX(units):
+   return units * mapScale[0] + mapOrigin[0]
+
+def mapY(units):
+   return units * mapScale[1] + mapOrigin[1]
+
+def mapPoint(point):
+   return (mapX(point[0]), mapY(point[1]))
+
+def mapLength(units):
+   return units * (mapScale[0] + mapScale[1]) / 2
+
+def openBlankMap():
+   image = Image.open(MAP_BASENAME_BLANK)
+   initMapGeometry(image.size)
+   return image
+
+def loadMapFont(sizeInMapUnits=MAP_FONT_SIZE):
+   # Testing has shown that, if this font load fails, the returned font is None
+   # which causes the drawn text to be present, just with a tiny font.
+   # User feedback has reported that it threw OSError.
+   try:
+      return ImageFont.truetype(FONT_FILENAME, round(mapLength(sizeInMapUnits)))
+   except:
+      print("CAUTION: An error occured loading the font file.  Please update the FONT_FILENAME variable to point at a font installed on your system.  If you need a .ttf file, can you can get from https://github.com/kiwi0fruit/open-fonts")
+      return None
+
+def saveMap(image, filename):
+   if cropSettings is not None:
+      image = image.crop(cropSettings)
+   image.save(filename)
+   chown(filename)
+
 def adjPos(pos, yFlag):
-   newPos = (pos / 22.887 + (18282.5,20480)[yFlag]) / MAP_DESCALE
-   return newPos
+   units = pos / 22.887 + (18282.5,20480)[yFlag]
+   return (mapX, mapY)[yFlag](units)
+
+def addMarker(draw, posX, posY, fill=None, outline=None, radius=None):
+   radius = mapLength(MAP_MARKER_RADIUS if radius is None else radius)
+   draw.ellipse((posX-radius, posY-radius, posX+radius, posY+radius), fill=fill, outline=outline)
 
 def addSlugs(slugDraw, slugs, fill=None, outline=None):
    for slug in slugs:
       coord = slugs[slug]
-      posX = adjPos(coord[0], False)
-      posY = adjPos(coord[1], True)
-      slugDraw.ellipse((posX-2, posY-2, posX+2, posY+2), fill=fill, outline=outline)
+      addMarker(slugDraw, adjPos(coord[0], False), adjPos(coord[1], True), fill=fill, outline=outline)
 
 def chown(filename: str):
    try:
@@ -558,18 +626,13 @@ def generateHTML(savFilename: str, outputDir: str = DEFAULT_OUTPUT_DIR, htmlBase
       if creatingMapImagesFlag:
          Image.MAX_IMAGE_PIXELS = 1700000000
 
-         try:
-            imageFont = ImageFont.truetype(FONT_FILENAME, MAP_FONT_SIZE)
-            # Testing has shown that, if this font load fails, imageFont is None
-            # which cases the drawn text to be present, just with a tiny font.
-            # User feedback has reported that it threw OSError.
-         except:
-            imageFont = None
+         origImage = openBlankMap()
+         imageFont = loadMapFont()
 
-         if imageFont is None:
-            print("CAUTION: An error occured loading the font file.  Please update the FONT_FILENAME variable to point at a font installed on your system.  If you need a .ttf file, can you can get from https://github.com/kiwi0fruit/open-fonts")
-
-         origImage = Image.open(MAP_BASENAME_BLANK)
+         textPosition = mapPoint(MAP_TEXT_POSITION)
+         legendPositionHd = mapPoint(MAP_LEGEND_POSITION_HD)
+         legendPositionSmc = mapPoint(MAP_LEGEND_POSITION_SMC)
+         legendPositionPc = mapPoint(MAP_LEGEND_POSITION_PC)
 
          smImage = origImage.copy()
          smDraw = ImageDraw.Draw(smImage)
@@ -585,10 +648,9 @@ def generateHTML(savFilename: str, outputDir: str = DEFAULT_OUTPUT_DIR, htmlBase
          addSlugs(smsDraw, uncollectedPowerSlugsBlue, outline=MAP_COLOR_SLUG_BLUE)
          addSlugs(smsDraw, uncollectedPowerSlugsYellow, outline=MAP_COLOR_SLUG_YELLOW)
          addSlugs(smsDraw, uncollectedPowerSlugsPurple, outline=MAP_COLOR_SLUG_PURPLE)
-         slugDraw.text(MAP_TEXT_POSITION, parsedSave.saveFileInfo.saveDatetime.strftime(f"Uncollected Slugs\n{parsedSave.saveFileInfo.sessionName} %m/%d/%Y %I:%M:%S %p"), font=imageFont, fill=MAP_COLOR_TEXT)
+         slugDraw.text(textPosition, parsedSave.saveFileInfo.saveDatetime.strftime(f"Uncollected Slugs\n{parsedSave.saveFileInfo.sessionName} %m/%d/%Y %I:%M:%S %p"), font=imageFont, fill=MAP_COLOR_TEXT)
          imageFilename = f"{outputDir}/{MAP_BASENAME_SLUGS}"
-         slugImage.crop(CROP_SETTINGS).save(imageFilename)
-         chown(imageFilename)
+         saveMap(slugImage, imageFilename)
 
          hdImage = origImage.copy()
          hdDraw = ImageDraw.Draw(hdImage)
@@ -596,37 +658,36 @@ def generateHTML(savFilename: str, outputDir: str = DEFAULT_OUTPUT_DIR, htmlBase
             coord = sav_data.crashSites.CRASH_SITES[key][2]
             posX = adjPos(coord[0], False)
             posY = adjPos(coord[1], True)
-            hdDraw.ellipse((posX-2, posY-2, posX+2, posY+2), fill=MAP_COLOR_CRASH_SITE_OPEN_EMPTY)
+            addMarker(hdDraw, posX, posY, fill=MAP_COLOR_CRASH_SITE_OPEN_EMPTY)
          for key in crashSitesNotOpened:
             coord = sav_data.crashSites.CRASH_SITES[key][2]
             posX = adjPos(coord[0], False)
             posY = adjPos(coord[1], True)
-            hdDraw.ellipse((posX-2, posY-2, posX+2, posY+2), fill=MAP_COLOR_CRASH_SITE_UNOPENED)
-            smDraw.ellipse((posX-2, posY-2, posX+2, posY+2), fill=MAP_COLOR_CRASH_SITE_UNOPENED)
-            smsDraw.ellipse((posX-2, posY-2, posX+2, posY+2), fill=MAP_COLOR_CRASH_SITE_UNOPENED)
+            addMarker(hdDraw, posX, posY, fill=MAP_COLOR_CRASH_SITE_UNOPENED)
+            addMarker(smDraw, posX, posY, fill=MAP_COLOR_CRASH_SITE_UNOPENED)
+            addMarker(smsDraw, posX, posY, fill=MAP_COLOR_CRASH_SITE_UNOPENED)
          for key in crashSitesOpenWithDrive:
             coord = sav_data.crashSites.CRASH_SITES[key][2]
             if coord is not None:
                posX = adjPos(coord[0], False)
                posY = adjPos(coord[1], True)
-               hdDraw.ellipse((posX-2, posY-2, posX+2, posY+2), fill=MAP_COLOR_CRASH_SITE_OPEN_W_DRIVE)
-               smDraw.ellipse((posX-2, posY-2, posX+2, posY+2), fill=MAP_COLOR_CRASH_SITE_OPEN_W_DRIVE)
-               smsDraw.ellipse((posX-2, posY-2, posX+2, posY+2), fill=MAP_COLOR_CRASH_SITE_OPEN_W_DRIVE)
+               addMarker(hdDraw, posX, posY, fill=MAP_COLOR_CRASH_SITE_OPEN_W_DRIVE)
+               addMarker(smDraw, posX, posY, fill=MAP_COLOR_CRASH_SITE_OPEN_W_DRIVE)
+               addMarker(smsDraw, posX, posY, fill=MAP_COLOR_CRASH_SITE_OPEN_W_DRIVE)
          for key in crashSitesDismantled:
             coord = sav_data.crashSites.CRASH_SITES[key][2]
             posX = adjPos(coord[0], False)
             posY = adjPos(coord[1], True)
-            hdDraw.ellipse((posX-2, posY-2, posX+2, posY+2), fill=MAP_COLOR_CRASH_SITE_DISMANTLED)
-            #smsDraw.ellipse((posX-2, posY-2, posX+2, posY+2), fill=MAP_COLOR_CRASH_SITE_DISMANTLED)
-         hdDraw.text(MAP_TEXT_POSITION, parsedSave.saveFileInfo.saveDatetime.strftime(f"Hard drives\n{parsedSave.saveFileInfo.sessionName} %m/%d/%Y %I:%M:%S %p"), font=imageFont, fill=MAP_COLOR_TEXT)
-         hdDraw.text(MAP_LEGEND_POSITION_HD, "Blue: Unopened\nGreen: Open with drive\nWhite: Open and empty\nCyan: Dismantled", font=imageFont, fill=(255,255,255))
-         hdDraw.text(MAP_LEGEND_POSITION_HD, "Blue", font=imageFont, fill=MAP_COLOR_CRASH_SITE_UNOPENED)
-         hdDraw.text(MAP_LEGEND_POSITION_HD, "\nGreen", font=imageFont, fill=MAP_COLOR_CRASH_SITE_OPEN_W_DRIVE)
-         hdDraw.text(MAP_LEGEND_POSITION_HD, "\n\nWhite", font=imageFont, fill=MAP_COLOR_CRASH_SITE_OPEN_EMPTY)
-         hdDraw.text(MAP_LEGEND_POSITION_HD, "\n\n\nCyan", font=imageFont, fill=MAP_COLOR_CRASH_SITE_DISMANTLED)
+            addMarker(hdDraw, posX, posY, fill=MAP_COLOR_CRASH_SITE_DISMANTLED)
+            #addMarker(smsDraw, posX, posY, fill=MAP_COLOR_CRASH_SITE_DISMANTLED)
+         hdDraw.text(textPosition, parsedSave.saveFileInfo.saveDatetime.strftime(f"Hard drives\n{parsedSave.saveFileInfo.sessionName} %m/%d/%Y %I:%M:%S %p"), font=imageFont, fill=MAP_COLOR_TEXT)
+         hdDraw.text(legendPositionHd, "Blue: Unopened\nGreen: Open with drive\nWhite: Open and empty\nCyan: Dismantled", font=imageFont, fill=(255,255,255))
+         hdDraw.text(legendPositionHd, "Blue", font=imageFont, fill=MAP_COLOR_CRASH_SITE_UNOPENED)
+         hdDraw.text(legendPositionHd, "\nGreen", font=imageFont, fill=MAP_COLOR_CRASH_SITE_OPEN_W_DRIVE)
+         hdDraw.text(legendPositionHd, "\n\nWhite", font=imageFont, fill=MAP_COLOR_CRASH_SITE_OPEN_EMPTY)
+         hdDraw.text(legendPositionHd, "\n\n\nCyan", font=imageFont, fill=MAP_COLOR_CRASH_SITE_DISMANTLED)
          imageFilename = f"{outputDir}/{MAP_BASENAME_HARD_DRIVES}"
-         hdImage.crop(CROP_SETTINGS).save(imageFilename)
-         chown(imageFilename)
+         saveMap(hdImage, imageFilename)
 
          ssImage = origImage.copy()
          ssDraw = ImageDraw.Draw(ssImage)
@@ -634,13 +695,12 @@ def generateHTML(savFilename: str, outputDir: str = DEFAULT_OUTPUT_DIR, htmlBase
             (rootObject, rotation, position, details) = uncollectedSomersloops[instanceName]
             posX = adjPos(position[0], False)
             posY = adjPos(position[1], True)
-            ssDraw.ellipse((posX-2, posY-2, posX+2, posY+2), fill=MAP_COLOR_UNCOLLECTED_SOMERSLOOP)
-            smDraw.ellipse((posX-2, posY-2, posX+2, posY+2), fill=MAP_COLOR_UNCOLLECTED_SOMERSLOOP)
-            smsDraw.ellipse((posX-2, posY-2, posX+2, posY+2), fill=MAP_COLOR_UNCOLLECTED_SOMERSLOOP)
-         ssDraw.text(MAP_TEXT_POSITION, parsedSave.saveFileInfo.saveDatetime.strftime(f"Uncollected Somersloops\n{parsedSave.saveFileInfo.sessionName} %m/%d/%Y %I:%M:%S %p"), font=imageFont, fill=MAP_COLOR_TEXT)
+            addMarker(ssDraw, posX, posY, fill=MAP_COLOR_UNCOLLECTED_SOMERSLOOP)
+            addMarker(smDraw, posX, posY, fill=MAP_COLOR_UNCOLLECTED_SOMERSLOOP)
+            addMarker(smsDraw, posX, posY, fill=MAP_COLOR_UNCOLLECTED_SOMERSLOOP)
+         ssDraw.text(textPosition, parsedSave.saveFileInfo.saveDatetime.strftime(f"Uncollected Somersloops\n{parsedSave.saveFileInfo.sessionName} %m/%d/%Y %I:%M:%S %p"), font=imageFont, fill=MAP_COLOR_TEXT)
          imageFilename = f"{outputDir}/{MAP_BASENAME_SOMERSLOOP}"
-         ssImage.crop(CROP_SETTINGS).save(imageFilename)
-         chown(imageFilename)
+         saveMap(ssImage, imageFilename)
 
          msImage = origImage.copy()
          msDraw = ImageDraw.Draw(msImage)
@@ -648,28 +708,25 @@ def generateHTML(savFilename: str, outputDir: str = DEFAULT_OUTPUT_DIR, htmlBase
             (rootObject, rotation, position, details) = uncollectedMercerSpheres[instanceName]
             posX = adjPos(position[0], False)
             posY = adjPos(position[1], True)
-            msDraw.ellipse((posX-2, posY-2, posX+2, posY+2), fill=MAP_COLOR_UNCOLLECTED_MERCER_SPHERE)
-            smDraw.ellipse((posX-2, posY-2, posX+2, posY+2), fill=MAP_COLOR_UNCOLLECTED_MERCER_SPHERE)
-            smsDraw.ellipse((posX-2, posY-2, posX+2, posY+2), fill=MAP_COLOR_UNCOLLECTED_MERCER_SPHERE)
-         msDraw.text(MAP_TEXT_POSITION, parsedSave.saveFileInfo.saveDatetime.strftime(f"Uncollected Mercer Spheres\n{parsedSave.saveFileInfo.sessionName} %m/%d/%Y %I:%M:%S %p"), font=imageFont, fill=MAP_COLOR_TEXT)
+            addMarker(msDraw, posX, posY, fill=MAP_COLOR_UNCOLLECTED_MERCER_SPHERE)
+            addMarker(smDraw, posX, posY, fill=MAP_COLOR_UNCOLLECTED_MERCER_SPHERE)
+            addMarker(smsDraw, posX, posY, fill=MAP_COLOR_UNCOLLECTED_MERCER_SPHERE)
+         msDraw.text(textPosition, parsedSave.saveFileInfo.saveDatetime.strftime(f"Uncollected Mercer Spheres\n{parsedSave.saveFileInfo.sessionName} %m/%d/%Y %I:%M:%S %p"), font=imageFont, fill=MAP_COLOR_TEXT)
          imageFilename = f"{outputDir}/{MAP_BASENAME_MERCER_SPHERE}"
-         msImage.crop(CROP_SETTINGS).save(imageFilename)
-         chown(imageFilename)
+         saveMap(msImage, imageFilename)
 
-         smDraw.text(MAP_TEXT_POSITION, parsedSave.saveFileInfo.saveDatetime.strftime(f"Uncollected Somersloops &\nMercer Spheres & Crash Sites\n{parsedSave.saveFileInfo.sessionName} %m/%d/%Y %I:%M:%S %p"), font=imageFont, fill=MAP_COLOR_TEXT)
-         smDraw.text(MAP_LEGEND_POSITION_SMC, "Red: Somersloops\nPurple: Mercer Sphere\nBlue: Unopened Crash Site\nGreen: Open Crash Site with drive", font=imageFont, fill=(255,255,255))
-         smDraw.text(MAP_LEGEND_POSITION_SMC, "Red", font=imageFont, fill=MAP_COLOR_UNCOLLECTED_SOMERSLOOP)
-         smDraw.text(MAP_LEGEND_POSITION_SMC, "\nPurple", font=imageFont, fill=MAP_COLOR_UNCOLLECTED_MERCER_SPHERE)
-         smDraw.text(MAP_LEGEND_POSITION_SMC, "\n\nBlue", font=imageFont, fill=MAP_COLOR_CRASH_SITE_UNOPENED)
-         smDraw.text(MAP_LEGEND_POSITION_SMC, "\n\n\nGreen", font=imageFont, fill=MAP_COLOR_CRASH_SITE_OPEN_W_DRIVE)
+         smDraw.text(textPosition, parsedSave.saveFileInfo.saveDatetime.strftime(f"Uncollected Somersloops &\nMercer Spheres & Crash Sites\n{parsedSave.saveFileInfo.sessionName} %m/%d/%Y %I:%M:%S %p"), font=imageFont, fill=MAP_COLOR_TEXT)
+         smDraw.text(legendPositionSmc, "Red: Somersloops\nPurple: Mercer Sphere\nBlue: Unopened Crash Site\nGreen: Open Crash Site with drive", font=imageFont, fill=(255,255,255))
+         smDraw.text(legendPositionSmc, "Red", font=imageFont, fill=MAP_COLOR_UNCOLLECTED_SOMERSLOOP)
+         smDraw.text(legendPositionSmc, "\nPurple", font=imageFont, fill=MAP_COLOR_UNCOLLECTED_MERCER_SPHERE)
+         smDraw.text(legendPositionSmc, "\n\nBlue", font=imageFont, fill=MAP_COLOR_CRASH_SITE_UNOPENED)
+         smDraw.text(legendPositionSmc, "\n\n\nGreen", font=imageFont, fill=MAP_COLOR_CRASH_SITE_OPEN_W_DRIVE)
          imageFilename = f"{outputDir}/{MAP_BASENAME_SOME_MERC_HD}"
-         smImage.crop(CROP_SETTINGS).save(imageFilename)
-         chown(imageFilename)
+         saveMap(smImage, imageFilename)
 
-         smsDraw.text(MAP_TEXT_POSITION, parsedSave.saveFileInfo.saveDatetime.strftime(f"Uncollected Somersloops & Mercer Spheres &\nSlugs & Crash Sites\n{parsedSave.saveFileInfo.sessionName} %m/%d/%Y %I:%M:%S %p"), font=imageFont, fill=MAP_COLOR_TEXT)
+         smsDraw.text(textPosition, parsedSave.saveFileInfo.saveDatetime.strftime(f"Uncollected Somersloops & Mercer Spheres &\nSlugs & Crash Sites\n{parsedSave.saveFileInfo.sessionName} %m/%d/%Y %I:%M:%S %p"), font=imageFont, fill=MAP_COLOR_TEXT)
          imageFilename = f"{outputDir}/{MAP_BASENAME_COLLECTABLES}"
-         smsImage.crop(CROP_SETTINGS).save(imageFilename)
-         chown(imageFilename)
+         saveMap(smsImage, imageFilename)
 
          plImage = origImage.copy()
          plDraw = ImageDraw.Draw(plImage)
@@ -678,11 +735,10 @@ def generateHTML(savFilename: str, outputDir: str = DEFAULT_OUTPUT_DIR, htmlBase
             posdX = adjPos(dst[0], False)
             possY = adjPos(src[1], True)
             posdY = adjPos(dst[1], True)
-            plDraw.line(((possX, possY), (posdX, posdY)), fill=MAP_COLOR_POWER_LINE, width=2)
-         plDraw.text(MAP_TEXT_POSITION, parsedSave.saveFileInfo.saveDatetime.strftime(f"Power Lines\n{parsedSave.saveFileInfo.sessionName} %m/%d/%Y %I:%M:%S %p"), font=imageFont, fill=MAP_COLOR_TEXT)
+            plDraw.line(((possX, possY), (posdX, posdY)), fill=MAP_COLOR_POWER_LINE, width=round(mapLength(MAP_POWER_LINE_WIDTH)))
+         plDraw.text(textPosition, parsedSave.saveFileInfo.saveDatetime.strftime(f"Power Lines\n{parsedSave.saveFileInfo.sessionName} %m/%d/%Y %I:%M:%S %p"), font=imageFont, fill=MAP_COLOR_TEXT)
          imageFilename = f"{outputDir}/{MAP_BASENAME_POWER}"
-         plImage.crop(CROP_SETTINGS).save(imageFilename)
-         chown(imageFilename)
+         saveMap(plImage, imageFilename)
 
          pcImage = origImage.copy()
          pcDraw = ImageDraw.Draw(pcImage)
@@ -691,7 +747,7 @@ def generateHTML(savFilename: str, outputDir: str = DEFAULT_OUTPUT_DIR, htmlBase
             posdX = adjPos(dst[0], False)
             possY = adjPos(src[1], True)
             posdY = adjPos(dst[1], True)
-            pcDraw.line(((possX, possY), (posdX, posdY)), fill=MAP_COLOR_POWER_LINE, width=2)
+            pcDraw.line(((possX, possY), (posdX, posdY)), fill=MAP_COLOR_POWER_LINE, width=round(mapLength(MAP_POWER_LINE_WIDTH)))
          addSlugs(pcDraw, uncollectedPowerSlugsBlue, MAP_COLOR_SLUG_BLUE)
          addSlugs(pcDraw, uncollectedPowerSlugsYellow, MAP_COLOR_SLUG_YELLOW)
          addSlugs(pcDraw, uncollectedPowerSlugsPurple, MAP_COLOR_SLUG_PURPLE)
@@ -699,23 +755,22 @@ def generateHTML(savFilename: str, outputDir: str = DEFAULT_OUTPUT_DIR, htmlBase
             (rootObject, rotation, position, details) = uncollectedSomersloops[instanceName]
             posX = adjPos(position[0], False)
             posY = adjPos(position[1], True)
-            pcDraw.ellipse((posX-2, posY-2, posX+2, posY+2), fill=MAP_COLOR_UNCOLLECTED_SOMERSLOOP)
+            addMarker(pcDraw, posX, posY, fill=MAP_COLOR_UNCOLLECTED_SOMERSLOOP)
          for instanceName in uncollectedMercerSpheres:
             (rootObject, rotation, position, details) = uncollectedMercerSpheres[instanceName]
             posX = adjPos(position[0], False)
             posY = adjPos(position[1], True)
-            pcDraw.ellipse((posX-2, posY-2, posX+2, posY+2), fill=MAP_COLOR_UNCOLLECTED_MERCER_SPHERE)
-         pcDraw.text(MAP_TEXT_POSITION, parsedSave.saveFileInfo.saveDatetime.strftime(f"Power Lines & Collectables\n{parsedSave.saveFileInfo.sessionName} %m/%d/%Y %I:%M:%S %p"), font=imageFont, fill=MAP_COLOR_TEXT)
-         pcDraw.text(MAP_LEGEND_POSITION_PC, "Power Lines\nBlue Slugs\nYellow Slugs\nPurple Slugs\nSomersloops\nMercer Spheres", font=imageFont, fill=(255,255,255))
-         pcDraw.text(MAP_LEGEND_POSITION_PC, "Power Lines", font=imageFont, fill=MAP_COLOR_POWER_LINE)
-         pcDraw.text(MAP_LEGEND_POSITION_PC, "\nBlue Slugs", font=imageFont, fill=MAP_COLOR_SLUG_BLUE)
-         pcDraw.text(MAP_LEGEND_POSITION_PC, "\n\nYellow Slugs", font=imageFont, fill=MAP_COLOR_SLUG_YELLOW)
-         pcDraw.text(MAP_LEGEND_POSITION_PC, "\n\n\nPurple Slugs", font=imageFont, fill=MAP_COLOR_SLUG_PURPLE)
-         pcDraw.text(MAP_LEGEND_POSITION_PC, "\n\n\n\nSomersloops", font=imageFont, fill=MAP_COLOR_UNCOLLECTED_SOMERSLOOP)
-         pcDraw.text(MAP_LEGEND_POSITION_PC, "\n\n\n\n\nMercer Spheres", font=imageFont, fill=MAP_COLOR_UNCOLLECTED_MERCER_SPHERE)
+            addMarker(pcDraw, posX, posY, fill=MAP_COLOR_UNCOLLECTED_MERCER_SPHERE)
+         pcDraw.text(textPosition, parsedSave.saveFileInfo.saveDatetime.strftime(f"Power Lines & Collectables\n{parsedSave.saveFileInfo.sessionName} %m/%d/%Y %I:%M:%S %p"), font=imageFont, fill=MAP_COLOR_TEXT)
+         pcDraw.text(legendPositionPc, "Power Lines\nBlue Slugs\nYellow Slugs\nPurple Slugs\nSomersloops\nMercer Spheres", font=imageFont, fill=(255,255,255))
+         pcDraw.text(legendPositionPc, "Power Lines", font=imageFont, fill=MAP_COLOR_POWER_LINE)
+         pcDraw.text(legendPositionPc, "\nBlue Slugs", font=imageFont, fill=MAP_COLOR_SLUG_BLUE)
+         pcDraw.text(legendPositionPc, "\n\nYellow Slugs", font=imageFont, fill=MAP_COLOR_SLUG_YELLOW)
+         pcDraw.text(legendPositionPc, "\n\n\nPurple Slugs", font=imageFont, fill=MAP_COLOR_SLUG_PURPLE)
+         pcDraw.text(legendPositionPc, "\n\n\n\nSomersloops", font=imageFont, fill=MAP_COLOR_UNCOLLECTED_SOMERSLOOP)
+         pcDraw.text(legendPositionPc, "\n\n\n\n\nMercer Spheres", font=imageFont, fill=MAP_COLOR_UNCOLLECTED_MERCER_SPHERE)
          imageFilename = f"{outputDir}/{MAP_BASENAME_POWER_COLLECTABLES}"
-         pcImage.crop(CROP_SETTINGS).save(imageFilename)
-         chown(imageFilename)
+         saveMap(pcImage, imageFilename)
 
          rnImage = origImage.copy()
          rnDraw = ImageDraw.Draw(rnImage)
@@ -729,16 +784,15 @@ def generateHTML(savFilename: str, outputDir: str = DEFAULT_OUTPUT_DIR, htmlBase
                sz = MAP_RESOURCE_NODE_CIRCLE_SIZE_USED
 
             if purity in MAP_COLOR_NODE_PURITY:
-               rnDraw.ellipse((posX-sz, posY-sz, posX+sz, posY+sz), fill=MAP_COLOR_NODE_PURITY[purity])
+               addMarker(rnDraw, posX, posY, fill=MAP_COLOR_NODE_PURITY[purity], radius=sz)
 
-            sz -= 1
+            sz -= MAP_RESOURCE_NODE_RING_WIDTH
 
             if nodeType in MAP_COLOR_NODE_TYPE:
-               rnDraw.ellipse((posX-sz, posY-sz, posX+sz, posY+sz), fill=MAP_COLOR_NODE_TYPE[nodeType])
-         rnDraw.text(MAP_TEXT_POSITION, parsedSave.saveFileInfo.saveDatetime.strftime(f"Resource Nodes\n{parsedSave.saveFileInfo.sessionName} %m/%d/%Y %I:%M:%S %p"), font=imageFont, fill=MAP_COLOR_TEXT)
+               addMarker(rnDraw, posX, posY, fill=MAP_COLOR_NODE_TYPE[nodeType], radius=sz)
+         rnDraw.text(textPosition, parsedSave.saveFileInfo.saveDatetime.strftime(f"Resource Nodes\n{parsedSave.saveFileInfo.sessionName} %m/%d/%Y %I:%M:%S %p"), font=imageFont, fill=MAP_COLOR_TEXT)
          imageFilename = f"{outputDir}/{MAP_BASENAME_RESOURCE_NODES}"
-         rnImage.crop(CROP_SETTINGS).save(imageFilename)
-         chown(imageFilename)
+         saveMap(rnImage, imageFilename)
 
    except Exception as error:
       with open(htmlFilename, "w") as fout:
